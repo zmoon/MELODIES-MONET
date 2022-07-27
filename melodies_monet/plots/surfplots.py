@@ -135,7 +135,8 @@ def map_projection(f):
     elif f.model.lower() == 'random':
         proj = ccrs.PlateCarree()
     else: #Let's change this tomorrow to just plot as lambert conformal if nothing provided.
-        raise NotImplementedError('Projection not defined for new model. Please add to surfplots.py')
+        proj = ccrs.PlateCarree()
+        # raise NotImplementedError('Projection not defined for new model. Please add to surfplots.py')
     return proj
 
 def make_spatial_bias(df, column_o=None, label_o=None, column_m=None, 
@@ -356,6 +357,11 @@ def make_timeseries(df, column=None, label=None, ax=None, avg_window=None, ylabe
             ax.set_title('EPA Region ' + domain_name,fontweight='bold',**text_kwargs)
         else:
             ax.set_title(domain_name,fontweight='bold',**text_kwargs)
+
+    # Don't really need "time" when using pandas time series plotting
+    if ax.get_xlabel().lower() == "time":
+        ax.set_xlabel("")
+
     return ax
     
 def make_taylor(df, column_o=None, label_o='Obs', column_m=None, label_m='Model', 

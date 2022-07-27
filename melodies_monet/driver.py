@@ -220,6 +220,16 @@ class observation:
         None
         """
         self.obj = self.obj.to_dataframe().reset_index().drop(['x', 'y'], axis=1)
+        
+        # Add Giorgi region
+        from .util.tools import get_giorgi_region_df
+        self.obj = get_giorgi_region_df(self.obj).rename(
+            columns={
+                "GIORGI_ACRO": "giorgi_region",
+                "GIORGI_INDEX": "giorgi_region_index",
+            }
+        )
+        # TODO: change None to NaN?
 
 
 class model:
@@ -361,6 +371,10 @@ class model:
                 self.obj = xr.open_mfdataset(self.files,**self.mod_kwargs)
             else:
                 self.obj = xr.open_dataset(self.files[0],**self.mod_kwargs)
+            if "lev" in self.obj.dims:
+                self.obj = self.obj.isel(lev=1)  # Barry selected this one for p72
+            if len(self.obj.dims) == 3 and "z" not in self.obj.dims:  # likely time, lat, lon
+                self.obj = self.obj.expand_dims("z", axis=1)
         self.mask_and_scale()
 
     def mask_and_scale(self):
@@ -734,6 +748,11 @@ class analysis:
                         else:
                             pairdf = pairdf_all.reset_index().dropna(subset=[modvar])
 
+                        # Continue if empty df (due to region selection or NaN dropping)
+                        if pairdf.empty:
+                            print(f"df for {outname} empty")
+                            continue
+
                         # Types of plots
                         if plot_type.lower() == 'timeseries':
                             if set_yaxis == True:
@@ -826,6 +845,9 @@ class analysis:
                                 #Clear info for next plot.
                                 del (comb_bx, label_bx, fig_dict, plot_dict, text_dict, obs_dict, obs_plot_dict) 
                         elif plot_type.lower() == 'taylor':
+                            if not len(pairdf) >= 2:  # need at least 2 for std
+                                print(f"skipping Taylor {outname}")
+                                continue
                             if set_yaxis == True:
                                 if 'ty_scale' in obs_plot_dict.keys():
                                     ty_scale = obs_plot_dict['ty_scale']

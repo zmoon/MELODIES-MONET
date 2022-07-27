@@ -4,6 +4,7 @@
 """
 melodies-monet -- MELODIES MONET CLI
 """
+import datetime
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -116,6 +117,24 @@ def main(
 
     with _timer("Pairing"):
         an.pair_data()
+
+    with _timer("Saving paired data"):
+        # startdatename = datetime.datetime.strftime(an.start_time, '%Y-%m-%d_%H')
+        # enddatename = datetime.datetime.strftime(an.end_time, '%Y-%m-%d_%H')
+        startdatename = datetime.datetime.strftime(an.start_time, r'%Y%m%d')
+        for k, p in an.paired.items():
+            # fn = f"{k}_{startdatename}-{enddatename}.nc"
+            fn = f"{k}_{startdatename}.nc"
+            p.obj[
+                [
+                    "time", "x",
+                    "latitude", "longitude",
+                    "siteid",
+                    "giorgi_region_index",
+                    "giorgi_region",
+                    "aod_550nm", "AOD",
+                ]
+            ].to_netcdf(f"./out/{fn}")
 
     if an.control_dict.get("plots") is not None:
         with _timer("Plotting and saving the figures"):
