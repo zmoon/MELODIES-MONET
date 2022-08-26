@@ -547,13 +547,18 @@ class analysis:
                 o.open_obs()
                 self.obs[o.label] = o
 
-    def _auto_set_time(self, method, which):
+    def _auto_set_time(self, method, which, *, overlap=True):
         """Based on opened obs and/or models, set time.
         
         Parameters
         ----------
         method : str, {'auto', 'auto-obs', 'auto-models'}
+            Compute based on obs and models, just obs, or just models.
         which : str, {'start', 'end', 'both'}
+        overlap : bool
+            If true, compute start/end time ensuring that *all* datasets
+            in a group have data.
+            If false, compute absolute min/max time in a group.
         """
         valid_methods = ["auto", "auto-obs", "auto-models"]
         if method not in valid_methods:
@@ -569,24 +574,27 @@ class analysis:
                 f"Choose from {valid_whichs}."
             )
 
+        if overlap:
+            fmin, fmax = max, min
+        else:
+            fmin, fmax = min, max
+
         # obs
         # NOTE: assuming time increasing (could check)
-        # TODO: overlap region for these as well (`overlap=True`)?
         # TODO: provide `default` so can get past with empty?
         dss = (o.obj for o in self.obs.values())
-        tmin_obs = min(ds.time.data[0] for ds in dss)
-        tmax_obs = max(ds.time.data[-1] for ds in dss)
+        tmin_obs = fmin(ds.time.data[0] for ds in dss)
+        tmax_obs = fmax(ds.time.data[-1] for ds in dss)
 
         # models
         dss = (m.obj for m in self.models.values())
-        tmin_models = min(ds.time.data[0] for ds in dss)
-        tmax_models = max(ds.time.data[-1] for ds in dss)
+        tmin_models = fmin(ds.time.data[0] for ds in dss)
+        tmax_models = fmax(ds.time.data[-1] for ds in dss)
 
         if method == "auto":
-            # Overlap region
             # TODO: handle case when one is missing
-            start_time = max(tmin_obs, tmin_models)
-            end_time = min(tmax_obs, tmax_models)
+            start_time = fmin(tmin_obs, tmin_models)
+            end_time = fmax(tmax_obs, tmax_models)
         elif method == "auto-obs":
             start_time = tmin_obs
             end_time = tmax_obs
@@ -595,6 +603,7 @@ class analysis:
             end_time = tmax_models
 
         # TODO: error message if value is missing
+        # TODO: convert to pd.Timestamp
         if which in {"start", "both"}:
             self.start_time = start_time
         if which in {"end", "both"}:
