@@ -547,6 +547,60 @@ class analysis:
                 o.open_obs()
                 self.obs[o.label] = o
 
+    def _auto_set_time(self, method, which):
+        """Based on opened obs and/or models, set time.
+        
+        Parameters
+        ----------
+        method : str, {'auto', 'auto-obs', 'auto-models'}
+        which : str, {'start', 'end', 'both'}
+        """
+        valid_methods = ["auto", "auto-obs", "auto-models"]
+        if method not in valid_methods:
+            raise ValueError(
+                f"invalid method {method!r}. "
+                f"Choose from {valid_methods}."
+            )
+
+        valid_whichs = ["start", "end", "both"]
+        if which not in valid_whichs:
+            raise ValueError(
+                f"invalid which {which!r}. "
+                f"Choose from {valid_whichs}."
+            )
+
+        # obs
+        # NOTE: assuming time increasing (could check)
+        # TODO: overlap region for these as well (`overlap=True`)?
+        # TODO: provide `default` so can get past with empty?
+        dss = (o.obj for o in self.obs.values())
+        tmin_obs = min(ds.time.data[0] for ds in dss)
+        tmax_obs = max(ds.time.data[-1] for ds in dss)
+
+        # models
+        dss = (m.obj for m in self.models.values())
+        tmin_models = min(ds.time.data[0] for ds in dss)
+        tmax_models = max(ds.time.data[-1] for ds in dss)
+
+        if method == "auto":
+            # Overlap region
+            # TODO: handle case when one is missing
+            start_time = max(tmin_obs, tmin_models)
+            end_time = min(tmax_obs, tmax_models)
+        elif method == "auto-obs":
+            start_time = tmin_obs
+            end_time = tmax_obs
+        elif method == "auto-models":
+            start_time = tmin_models
+            end_time = tmax_models
+
+        # TODO: error message if value is missing
+        if which in {"start", "both"}:
+            self.start_time = start_time
+        if which in {"end", "both"}:
+            self.end_time = end_time
+
+
     def pair_data(self):
         """Pair all observations and models in the analysis class
         (i.e., those listed in the input yaml file) together,
