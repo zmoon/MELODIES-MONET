@@ -1,0 +1,21 @@
+name: melodies-monet
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.9
+  #
+  # melodies_monet deps
+  - monet
+  - monetio
+  - netcdf4
+  #
+  # Extras
+  - pooch
+  - wrf-python
+  #
+  - jupyterlab=3.*
+  #
+  - pip
+  - pip:
+    - '../'
