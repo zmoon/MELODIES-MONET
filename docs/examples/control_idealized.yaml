@@ -20,14 +20,14 @@ analysis:
     paired:
       method: 'netcdf' # 'netcdf' or 'pkl'
       filenames:
-        test_obs_test_model: 'asdf_test_obs_test_model.nc4'
+        test_obs_idealized: 'asdf_test_obs_idealized.nc4'
       # filenames: ['0904.pkl','0905.pkl'] # example for pkl method, uses str or iterable of filenames
     # models:
     # obs:
 
 model:
-  test_model:
-    files: test_model.nc
+  idealized:
+    files: idealized.nc
     mod_type: random
     variables:
       A:
@@ -57,7 +57,7 @@ plots:
       linewidth: 2.0
     domain_type: ['all']  # required
     domain_name: ['CONUS']  # required
-    data: ['test_obs_test_model']  # required
+    data: ['test_obs_idealized']  # required
     data_proc:  # These four seem to be required for time series
       rem_obs_nan: True  # True: Remove all points where model or obs variable is NaN. False: Remove only points where model variable is NaN.
       ts_select_time: 'time'  # 'time' for UTC or 'time_local'
@@ -72,7 +72,7 @@ plots:
       figsize: [10, 5]
     domain_type: ['all']  # required
     domain_name: ['CONUS']  # required
-    data: ['test_obs_test_model']  # required
+    data: ['test_obs_idealized']  # required
     data_proc:
       rem_obs_nan: True
       set_axis: True

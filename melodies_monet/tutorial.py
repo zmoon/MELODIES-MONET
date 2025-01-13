@@ -106,13 +106,13 @@ _examples = {
         ),
     },
     "improve": {
-        "2019_daily" : (
+        "2019_daily": (
             "example_observation_data/surface/IMPROVE_DAILY_2019.nc",
             "599afc11238c30345f9f756e379d527b2e67b5674cdcf5074df1a93677fe7f9d",
         )
     },
     "ncore": {
-        "2019_daily" : (
+        "2019_daily": (
             "example_observation_data/surface/NCORE_DAILY_2019.nc",
             "888fb70f7f6cd9af8b49398b56240fcb70ebe886152c143e6a6016074d4f0bfe",
         )
@@ -126,11 +126,13 @@ _examples = {
 }
 """Files to fetch for a certain example, paths relative to the FTP site."""
 
+# fmt: off
 _examples_flat = {
     f"{a}:{b}": tup
     for a, dct in _examples.items()
     for b, tup in dct.items()
 }
+# fmt: on
 
 example_ids = list(_examples_flat)
 
@@ -159,3 +161,172 @@ def fetch_example(example: str) -> str:
     fp = pooch.retrieve(url, known_hash=hash)
 
     return fp
+
+
+def model(
+    control: dict,
+    model: str = "idealized",
+    *,
+    freq: str = "1h",
+    lon=(-161, -60, 100),
+    lat=(18, 60, 200),
+):
+    """
+    Parameters
+    ----------
+    control
+        The control file dictionary (from :meth:`~.driver.analysis.read_control`).
+    model
+        ID for this model in the `control` model section.
+    freq
+        Time frequency to generate.
+    lon, lat : tuple
+        Start, stop, and number of points for the longitude and latitude
+        (passed on ``np.linspace``; number of points defaults to 50 so can be omitted).
+
+    Returns
+    -------
+    xarray.Dataset
+    """
+    import numpy as np
+    import pandas as pd
+    import xarray as xr
+
+    # TODO: allow passing in arrays for lon, lat?
+    # TODO: optional z dim based on surf_only flag?
+    lon = np.linspace(*lon)
+    lat = np.linspace(*lat)
+    # lon2d, lat2d = np.meshgrid(lon, lat)
+
+    time = pd.date_range(
+        control["analysis"]["start_time"],
+        control["analysis"]["end_time"],
+        freq=freq,
+    )
+
+    # Generate translating and expanding Gaussian
+    x_ = np.linspace(-1, 1, lon.size)
+    y_ = np.linspace(-1, 1, lat.size)
+    x, y = np.meshgrid(x_, y_)
+    mu = np.linspace(-0.5, 0.5, time.size)
+    sigma = np.linspace(0.3, 1, time.size)
+    g = np.exp(
+        -((x[np.newaxis, ...] - mu[:, np.newaxis, np.newaxis]) ** 2 + y[np.newaxis, ...] ** 2)
+        / (2 * sigma[:, np.newaxis, np.newaxis] ** 2)
+    )
+
+    # Coordinates
+    lat_da = xr.DataArray(
+        lat,
+        dims="lat",
+        attrs={"long_name": "latitude", "units": "degrees_north"},
+        name="lat",
+    )
+    lon_da = xr.DataArray(
+        lon,
+        dims="lon",
+        attrs={"long_name": "longitude", "units": "degrees_east"},
+        name="lon",
+    )
+    time_da = xr.DataArray(time, dims="time", name="time")
+
+    # Generate dataset
+    field_names = control["model"][model]["variables"].keys()
+    ds_dict = dict()
+    for field_name in field_names:
+        units = control["model"][model]["variables"][field_name]["units"]
+        data = g
+        da = xr.DataArray(
+            data,
+            coords=[time_da, lat_da, lon_da],
+            dims=("time", "lat", "lon"),
+            attrs={"units": units},
+        )
+        ds_dict[field_name] = da
+    ds = xr.Dataset(ds_dict).expand_dims("z", axis=1)
+    ds["z"] = [1]
+
+    return ds
+
+
+def pt_sfc_obs(
+    control: dict,
+    model,
+    *,
+    n: int = 500,
+    seed: int = 42,
+):
+    """
+    Parameters
+    ----------
+    control
+        The control file dictionary (from :meth:`~.driver.analysis.read_control`).
+    model : xarray.Dataset
+        The model dataset.
+        We add noise and bias on top of this to simulate observations.
+    n
+        Number of observations to create (``x`` dim in the returned dataset)
+    seed
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    xarray.Dataset
+    """
+    import numpy as np
+    import xarray as xr
+
+    from string import ascii_lowercase
+
+    rs = np.random.RandomState(seed)
+
+    model_id = "idealized"  # FIXME
+
+    # Generate positions
+    # TODO: only within land boundaries would be cleaner
+    # TODO: try get range from an attribute first?
+    lat_min, lat_max = model["lat"].min(), model["lat"].max()
+    lon_min, lon_max = model["lon"].min(), model["lon"].max()
+    lats = rs.uniform(lat_min, lat_max, n)
+    lons = rs.uniform(lon_min, lon_max, n)
+    siteid = np.array([f"{x:0{len(str(n))}}" for x in range(n)])[np.newaxis, :]
+    random_vlen = np.array(
+        [
+            "".join(rs.choice(list(ascii_lowercase), size=x, replace=True))
+            for x in rs.randint(low=2, high=8, size=n)
+        ],
+        dtype=str,
+    )[np.newaxis, :]
+
+    # Generate dataset
+    ntime = model.sizes["time"]
+    field_names = control["model"][model_id]["variables"].keys()
+    ds_dict = dict()
+    for field_name0 in field_names:
+        field_name = control["model"][model_id]["mapping"]["test_obs"][field_name0]
+        # TODO: support different units with unit_scale etc.
+        units = control["model"][model_id]["variables"][field_name0]["units"]
+        values = (
+            model[field_name0]
+            .squeeze()
+            .interp(lat=xr.DataArray(lats), lon=xr.DataArray(lons))
+            .values
+            + rs.normal(scale=0.3, size=(ntime, n))
+        )[:, np.newaxis]
+        da = xr.DataArray(
+            values,
+            coords={
+                "x": ("x", np.arange(n)),  # !!!
+                "time": ("time", model["time"].data),
+                "latitude": (("y", "x"), lats[np.newaxis, :], model["lat"].attrs),
+                "longitude": (("y", "x"), lons[np.newaxis, :], model["lon"].attrs),
+                "siteid": (("y", "x"), siteid),
+                "fake_site_meta": (("y", "x"), random_vlen),
+            },
+            dims=("time", "y", "x"),
+            attrs={"units": units},
+        )
+        ds_dict[field_name] = da
+    ds = xr.Dataset(ds_dict)
+
+    return ds
