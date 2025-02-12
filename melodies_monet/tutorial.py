@@ -211,7 +211,6 @@ def model(
     import pandas as pd
     import xarray as xr
 
-    # TODO: allow passing in arrays for lon, lat?
     # TODO: optional z dim based on surf_only flag?
     lon = _to_arr(lon)
     lat = _to_arr(lat)
