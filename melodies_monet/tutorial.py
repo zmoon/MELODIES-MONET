@@ -163,6 +163,24 @@ def fetch_example(example: str) -> str:
     return fp
 
 
+def _to_arr(x, *, default_num: int = 25):
+    import numpy as np
+
+    if np.isscalar(x):
+        return np.array([x])
+    elif isinstance(x, tuple):
+        # Assume range spec
+        if len(x) == 3:
+            return np.linspace(*x)
+        elif len(x) == 2:
+            return np.linspace(*x, default_num)
+        else:
+            raise ValueError("tuple must have 2 or 3 elements")
+    else:
+        # Assume array-like
+        return np.asarray(x)
+
+
 def model(
     control: dict,
     model: str = "idealized",
@@ -180,9 +198,10 @@ def model(
         ID for this model in the `control` model section.
     freq
         Time frequency to generate.
-    lon, lat : tuple
+    lon, lat : tuple or array-like or scalar
         Start, stop, and number of points for the longitude and latitude
-        (passed on ``np.linspace``; number of points defaults to 50 so can be omitted).
+        (passed on ``np.linspace``; number of points defaults to 25 and can be omitted).
+        You can also pass in an array-like of values or single value directly.
 
     Returns
     -------
@@ -194,8 +213,8 @@ def model(
 
     # TODO: allow passing in arrays for lon, lat?
     # TODO: optional z dim based on surf_only flag?
-    lon = np.linspace(*lon)
-    lat = np.linspace(*lat)
+    lon = _to_arr(lon)
+    lat = _to_arr(lat)
     # lon2d, lat2d = np.meshgrid(lon, lat)
 
     time = pd.date_range(
@@ -356,8 +375,12 @@ def swath_grid_2d(
         200--1000 km for low Earth orbits (e.g. polar-orbiting satellites).
     view_along : tuple
         min and max viewing angles along track (y) [deg], number of points
+        (passed on ``np.linspace``; number of points defaults to 25 and can be omitted).
+        You can also pass in an array-like of values or single value directly.
     view_cross : tuple
         min and max viewing angles across track (x) [deg], number of points
+        (passed on ``np.linspace``; number of points defaults to 25 and can be omitted).
+        You can also pass in an array-like of values or single value directly.
     look_angle : float
         Angle from nadir [deg], e.g. 0 = straight down
     look_azimuth : float
@@ -383,8 +406,8 @@ def swath_grid_2d(
     theta_max_deg = np.rad2deg(theta_max)
 
     # Create angular grid
-    x_angles = np.linspace(*view_cross)
-    y_angles = np.linspace(*view_along)
+    x_angles = _to_arr(view_cross)
+    y_angles = _to_arr(view_along)
     xx, yy = np.meshgrid(x_angles, y_angles)
 
     # Calculate ground positions
