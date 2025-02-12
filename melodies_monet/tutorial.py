@@ -330,3 +330,125 @@ def pt_sfc_obs(
     ds = xr.Dataset(ds_dict)
 
     return ds
+
+
+def swath_grid_2d(
+    lat,
+    lon,
+    alt,
+    *,
+    view_along=(-10, 10, 20),
+    view_cross=(-5, 5, 10),
+    look_angle=0,
+    look_azimuth=0,
+):
+    """Generate a 2-D lat/lon satellite swath-like grid.
+
+    Parameters:
+    -----------
+    lat : float
+        Satellite latitude [deg]
+    lon : float
+        Satellite longitude [deg]
+    alt : float
+        Satellite altitude (above spherical Earth surface) [km].
+        For example, ~ 35,786 km for geostationary orbit,
+        200--1000 km for low Earth orbits (e.g. polar-orbiting satellites).
+    view_along : tuple
+        min and max viewing angles along track (y) [deg], number of points
+    view_cross : tuple
+        min and max viewing angles across track (x) [deg], number of points
+    look_angle : float
+        Angle from nadir [deg], e.g. 0 = straight down
+    look_azimuth : float
+        Azimuth angle of the look direction [deg], e.g. 0=N, 90=E
+
+    Returns
+    -------
+    xarray.Dataset
+    """
+    import numpy as np
+    import xarray as xr
+    from pyproj import Geod
+
+    if look_angle != 0:
+        raise NotImplementedError("nonzero look angle's not really working")
+
+    geod = Geod(ellps="WGS84")
+    r_e_m = geod.a  # Earth radius (m)
+    alt_m = alt * 1e3  # km -> m
+
+    # Calculate maximum observable angle (theta_max)
+    theta_max = np.arcsin(r_e_m / (r_e_m + alt_m))  # radians
+    theta_max_deg = np.rad2deg(theta_max)
+
+    # Create angular grid
+    x_angles = np.linspace(*view_cross)
+    y_angles = np.linspace(*view_along)
+    xx, yy = np.meshgrid(x_angles, y_angles)
+
+    # Calculate ground positions
+    ny, nx = xx.shape
+    latg = np.full((ny, nx), np.nan)
+    long = np.full((ny, nx), np.nan)
+    for i in range(ny):
+        for j in range(nx):
+            # Calculate combined angle from nadir
+            theta_deg = np.sqrt(xx[i,j]**2 + yy[i,j]**2) + look_angle
+            if theta_deg > theta_max_deg:
+                # Point is beyond observable horizon
+                continue
+
+            # Convert to radians for calculations
+            theta_rad = np.deg2rad(theta_deg)
+
+            # Calculate effective azimuth
+            effective_azimuth = look_azimuth + np.rad2deg(np.arctan2(xx[i,j], yy[i,j]))
+
+            # Calculate ground distance using spherical geometry
+            sin_theta = np.sin(theta_rad)
+            sin_gamma = (r_e_m + alt_m) / r_e_m * sin_theta
+            gamma = np.arcsin(sin_gamma)
+            ground_distance = r_e_m * gamma
+
+            # Calculate new coordinates
+            lon_ij, lat_ij, _ = geod.fwd(
+                lon, lat,
+                effective_azimuth,
+                ground_distance,
+                radians=False,
+            )
+            latg[i,j] = lat_ij
+            long[i,j] = lon_ij
+
+    ds = xr.Dataset(
+        coords={
+            "lat": (
+                ("y", "x"),
+                latg,
+                {
+                    "long_name": "pixel center latitude",
+                    "units": "degrees_north",
+                },
+            ),
+            "lon": (
+                ("y", "x"),
+                long,
+                {
+                    "long_name": "pixel center longitude",
+                    "units": "degrees_east",
+                }
+            ),
+        },
+        attrs={
+            "sat_lat": lat,
+            "sat_lon": lon,
+            "sat_alt": alt,
+            "view_along": view_along,
+            "view_cross": view_cross,
+            "look_angle": look_angle,
+            "look_azimuth": look_azimuth,
+        },
+    )
+
+    return ds
