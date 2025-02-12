@@ -186,8 +186,8 @@ def model(
     model: str = "idealized",
     *,
     freq: str = "1h",
-    lon=(-161, -60, 100),
-    lat=(18, 60, 200),
+    lon=(-161, -60, 200),
+    lat=(18, 60, 100),
 ):
     """
     Parameters
