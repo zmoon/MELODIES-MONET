@@ -344,6 +344,13 @@ def pt_sfc_obs(
     return ds
 
 
+def aircraft(
+    model,
+    coords,
+):
+    """Aircraft-like flight path."""
+
+
 def swath_grid_2d(
     lat,
     lon,
