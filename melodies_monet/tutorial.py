@@ -188,6 +188,7 @@ def model(
     freq: str = "1h",
     lon=(-161, -60, 200),
     lat=(18, 60, 100),
+    p=1000,
 ):
     """
     Parameters
@@ -198,9 +199,10 @@ def model(
         ID for this model in the `control` model section.
     freq
         Time frequency to generate.
-    lon, lat : tuple or array-like or scalar
-        Start, stop, and number of points for the longitude and latitude
-        (passed on ``np.linspace``; number of points defaults to 25 and can be omitted).
+    lon, lat, p : tuple or array-like or scalar
+        Start, stop, and number of points for coordinates
+        (longitude, latitude, pressure;
+        passed on ``np.linspace``; number of points defaults to 25 and can be omitted).
         You can also pass in an array-like of values or single value directly.
 
     Returns
@@ -211,16 +213,14 @@ def model(
     import pandas as pd
     import xarray as xr
 
-    # TODO: optional z dim based on surf_only flag?
-    lon = _to_arr(lon)
-    lat = _to_arr(lat)
-    # lon2d, lat2d = np.meshgrid(lon, lat)
-
     time = pd.date_range(
         control["analysis"]["start_time"],
         control["analysis"]["end_time"],
         freq=freq,
     )
+    p = _to_arr(p)
+    lat = _to_arr(lat)
+    lon = _to_arr(lon)
 
     # Generate translating and expanding Gaussian
     x_ = np.linspace(-1, 1, lon.size)
@@ -233,20 +233,9 @@ def model(
         / (2 * sigma[:, np.newaxis, np.newaxis] ** 2)
     )
 
-    # Coordinates
-    lat_da = xr.DataArray(
-        lat,
-        dims="lat",
-        attrs={"long_name": "latitude", "units": "degrees_north"},
-        name="lat",
-    )
-    lon_da = xr.DataArray(
-        lon,
-        dims="lon",
-        attrs={"long_name": "longitude", "units": "degrees_east"},
-        name="lon",
-    )
-    time_da = xr.DataArray(time, dims="time", name="time")
+    # Assume the value decreases with height
+    f = np.linspace(1, 0.01, p.size)
+    g = g[:, np.newaxis, ...] * f[np.newaxis, :, np.newaxis, np.newaxis]
 
     # Generate dataset
     field_names = control["model"][model]["variables"].keys()
@@ -256,13 +245,18 @@ def model(
         data = g
         da = xr.DataArray(
             data,
-            coords=[time_da, lat_da, lon_da],
-            dims=("time", "lat", "lon"),
+            coords={
+                "time": ("time", time),
+                "pres_pa_mid": ("z", p, {"long_name": "pressure", "units": "hPa"}),
+                "lat": ("y", lat, {"long_name": "latitude", "units": "degrees_north"}),
+                "lon": ("x", lon, {"long_name": "longitude", "units": "degrees_east"}),
+            },
+            dims=("time", "z", "y", "x"),
             attrs={"units": units},
         )
         ds_dict[field_name] = da
-    ds = xr.Dataset(ds_dict).expand_dims("z", axis=1)
-    ds["z"] = [1]
+
+    ds = xr.Dataset(ds_dict)
 
     return ds
 
